@@ -9,7 +9,7 @@ class MostElementsFromPool
     @a_capacity_bonus = max_capacity_a > max_capacity_b ? max_capacity_a - max_capacity_b : 0
     @b_capacity_bonus = max_capacity_b > max_capacity_a ? max_capacity_b - max_capacity_a : 0
 
-    @pairs = pairs.sort_by { |a, b| [(a - b).abs, a + b] }
+    @pairs = pairs.sort_by { |a, b| [a + b, (a - b).abs] }
   end
 
   def max_elements
@@ -24,47 +24,45 @@ class MostElementsFromPool
 
       (0..max_capacity).each do |capacity|
         previous = table[pair_number - 1][capacity]
-        with_capacity_removed = table[pair_number - 1][capacity - pair.max]
+        without_a_cap = table[pair_number - 1][capacity - pair[0]] unless (capacity - pair[0]).negative?
+        without_b_cap = table[pair_number - 1][capacity - pair[1]] unless (capacity - pair[1]).negative?
 
-        table[pair_number][capacity] = calculate_entry(pair, previous, with_capacity_removed, capacity)
+        table[pair_number][capacity] = calculate_entry(pair, previous, without_a_cap, without_b_cap, capacity)
       end
     end
 
     table
   end
 
-  def calculate_entry(pair, previous, with_capacity_removed, capacity)
-    previous_incrementable = fill_pairs_with_sufficient_capacity(pair, previous[1], capacity)
+  def calculate_entry(pair, previous, without_a_capacity, without_b_capacity, capacity)
+    candidate_entries = [increment_entry(previous, pair, capacity)]
 
-    if previous_incrementable.empty?
-      calculate_from_capacity_removed(pair, previous, with_capacity_removed, capacity)
-    elsif with_capacity_removed && with_capacity_removed[0] == previous[0]
-      extra_pairs = fill_pairs_with_sufficient_capacity(pair, with_capacity_removed[1], capacity)
+    [without_b_capacity, without_a_capacity].each do |entry|
+      next unless should_explore?(entry, previous, candidate_entries)
 
-      [previous[0] + 1, keep_best_pairs(extra_pairs + previous_incrementable)]
+      entry = increment_entry(entry, pair, capacity)
+
+      case entry[0] - candidate_entries[0][0]
+      when 1 then candidate_entries = [entry]
+      when 0 then candidate_entries << entry
+      end
+    end
+
+    if candidate_entries.count == 1
+      candidate_entries.first
     else
-      [previous[0] + 1, previous_incrementable]
+      [candidate_entries[0][0], keep_best_pairs(candidate_entries.flat_map { |e| e[1] })]
     end
   end
 
-  def calculate_from_capacity_removed(pair, previous, with_capacity_removed, capacity)
-    return previous if with_capacity_removed.nil? || with_capacity_removed[0] < previous[0] - 1
-
-    extra_pairs = fill_pairs_with_sufficient_capacity(pair, with_capacity_removed[1], capacity)
-
-    return previous if extra_pairs.empty?
-
-    case with_capacity_removed[0] - previous[0]
-    when 0 then [previous[0] + 1, extra_pairs]
-    when -1 then [previous[0], keep_best_pairs(previous[1] + extra_pairs)]
-    else previous
-    end
+  def should_explore?(entry, previous, other_candidates)
+    entry && entry != previous && entry[0] + 1 >= other_candidates[0][0]
   end
 
   def keep_best_pairs(pairs)
     pairs.sort!
     compare_pair = pairs.first
-    deduped_pairs = [pairs.first]
+    deduped_pairs = [compare_pair]
 
     (1..pairs.count - 1).each do |i|
       next if compare_pair[0] <= pairs[i][0] && compare_pair[1] <= pairs[i][1]
@@ -76,15 +74,19 @@ class MostElementsFromPool
     deduped_pairs
   end
 
-  def fill_pairs_with_sufficient_capacity(pair, existing_pairs, capacity)
+  # Either returns the entry with new pairs and an incremented element count,
+  # or if none can be incremented, the original entry
+  def increment_entry(entry, pair, capacity)
     a_capacity = capacity + a_capacity_bonus
     b_capacity = capacity + b_capacity_bonus
 
-    existing_pairs.each_with_object([]) do |(l, r), pairs|
+    new_pairs = entry[1].each_with_object([]) do |(l, r), pairs|
       next unless l + pair[0] <= a_capacity && r + pair[1] <= b_capacity
 
       pairs << [l + pair[0], r + pair[1]]
     end
+
+    new_pairs.empty? ? entry : [entry[0] + 1, new_pairs]
   end
 
   def build_empty_table(rows, columns)
