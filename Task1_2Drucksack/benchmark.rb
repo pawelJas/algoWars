@@ -39,6 +39,6 @@ def run_random(n)
   end
 end
 
-n = 500
+n = 1000
 run_random(n)
 run_unalanced(n)
